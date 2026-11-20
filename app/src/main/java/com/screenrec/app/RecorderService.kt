@@ -55,6 +55,7 @@ class RecorderService : Service() {
     private var selector: RegionSelectorView? = null
     private var countdownView: TextView? = null
     private var menu: View? = null
+    private var bubbleLp: WindowManager.LayoutParams? = null
 
     private var state = STATE_IDLE
     private var recordStartedAt = 0L
@@ -156,6 +157,7 @@ class RecorderService : Service() {
             x = 24
             y = 320
         }
+        bubbleLp = lp
         val slop = ViewConfiguration.get(this).scaledTouchSlop
         val v = ImageView(this).apply {
             scaleType = ImageView.ScaleType.FIT_XY
@@ -205,6 +207,7 @@ class RecorderService : Service() {
     private fun removeBubble() {
         removeView(bubble)
         bubble = null
+        bubbleLp = null
     }
 
     // -------------------------------------------------------------- alur
@@ -212,14 +215,41 @@ class RecorderService : Service() {
     private fun toggle() {
         when (state) {
             STATE_RECORDING -> stopRecording()
-            STATE_IDLE -> onBubbleTap()
+            STATE_IDLE -> startFlow()
             else -> {}
         }
     }
 
+    /** Ketuk tombol melayang: buka menu melingkar di posisi tombol. */
     private fun onBubbleTap() {
         if (state != STATE_IDLE) return
+        val lp = bubbleLp
+        val size = dp(56)
+        val cx = (lp?.x ?: 24) + size / 2f
+        val cy = (lp?.y ?: 320) + size / 2f
+        openRadial(cx, cy)
+    }
+
+    /** Mulai: langsung hitung mundur (layar penuh) atau pilih area dulu. */
+    private fun startFlow() {
+        if (state != STATE_IDLE) return
         if (prefs.aspect == Prefs.ASPECT_FULL) beginCountdown(null) else showSelector()
+    }
+
+    private fun openSettings() {
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        )
+    }
+
+    private fun openPreview(res: RecordingResult) {
+        startActivity(
+            Intent(this, PreviewActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(PreviewActivity.EXTRA_FILE, res.file.absolutePath)
+                .putExtra(PreviewActivity.EXTRA_URI, res.savedUri?.toString())
+        )
     }
 
     // --------------------------------------------------- pemilih area rekam
@@ -311,14 +341,14 @@ class RecorderService : Service() {
         unregisterShake()
         removeMenu()
         Thread {
-            val uri = rec.stop()
+            val res = rec.stop()
             main.post {
                 recorder = null
                 state = STATE_IDLE
                 refreshNotification()
                 showBubble()
-                val msg = if (uri != null) "Tersimpan di Movies/ScreenRec" else "Rekaman gagal disimpan"
-                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+                if (res != null) openPreview(res)
+                else Toast.makeText(this, "Rekaman gagal disimpan", Toast.LENGTH_LONG).show()
             }
         }.start()
     }
@@ -335,12 +365,10 @@ class RecorderService : Service() {
         if (rec != null && state == STATE_RECORDING) {
             state = STATE_STOPPING
             Thread {
-                val uri = rec.stop()
+                val res = rec.stop()
                 main.post {
                     recorder = null
-                    if (uri != null) {
-                        Toast.makeText(this, "Tersimpan di Movies/ScreenRec", Toast.LENGTH_LONG).show()
-                    }
+                    if (res != null) openPreview(res)
                     finishService()
                 }
             }.start()
@@ -392,7 +420,8 @@ class RecorderService : Service() {
                 shakeCount++
                 if (shakeCount >= 3) {
                     shakeCount = 0
-                    showMenu()
+                    val (sw, sh) = realSize()
+                    openRadial(sw / 2f, sh / 2f)
                 }
             }
         }
@@ -414,60 +443,26 @@ class RecorderService : Service() {
         }
     }
 
-    // ------------------------------------------------------------ menu stop
+    // -------------------------------------------------------- menu melingkar
 
-    @SuppressLint("ClickableViewAccessibility")
-    private fun showMenu() {
-        if (menu != null || state != STATE_RECORDING) return
-
-        val elapsed = (SystemClock.elapsedRealtime() - recordStartedAt) / 1000
-        val time = "%02d:%02d".format(elapsed / 60, elapsed % 60)
-
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            background = Ui.rounded(this@RecorderService, Ui.SURFACE, 24, Ui.BORDER, 1)
-            setPadding(dp(24), dp(22), dp(24), dp(22))
-            setOnClickListener { }  // cegah klik tembus ke latar
+    private fun openRadial(cx: Float, cy: Float) {
+        if (menu != null) return
+        val recording = state == STATE_RECORDING
+        if (!recording && state != STATE_IDLE) return
+        val (sw, sh) = realSize()
+        val items = listOf(
+            RadialItem("Mulai", RadialItem.PLAY, !recording) { startFlow() },
+            RadialItem("Berhenti", RadialItem.STOP, recording) { stopRecording() },
+            RadialItem("Pengaturan", RadialItem.SETTINGS, true) { openSettings() },
+        )
+        lateinit var radial: RadialMenu
+        radial = RadialMenu(this, cx, cy, sw, sh, items) {
+            // dipanggil setelah animasi tutup selesai (pilihan dipilih atau dibatalkan)
+            removeView(radial)
+            if (menu === radial) menu = null
         }
-        card.addView(Ui.text(this, "Sedang merekam", 18f, Ui.TEXT, true))
-        card.addView(Ui.text(this, time, 34f, Ui.DANGER, true).apply { setPadding(0, dp(6), 0, dp(14)) })
-
-        val stop = TextView(this).apply {
-            text = "Berhenti & simpan"
-            textSize = 15f
-            gravity = Gravity.CENTER
-            setTextColor(Color.WHITE)
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            background = Ui.ripple(this@RecorderService, Ui.gradient(this@RecorderService, Ui.DANGER, Ui.DANGER2, 14), 14)
-            setPadding(0, dp(14), 0, dp(14))
-            setOnClickListener { stopRecording() }
-        }
-        card.addView(stop, LinearLayout.LayoutParams(dp(240), ViewGroup.LayoutParams.WRAP_CONTENT))
-
-        val resume = TextView(this).apply {
-            text = "Lanjutkan merekam"
-            textSize = 15f
-            gravity = Gravity.CENTER
-            setTextColor(Ui.SUBTLE)
-            background = Ui.ripple(this@RecorderService, Ui.rounded(this@RecorderService, Ui.CHIP, 14), 14)
-            setPadding(0, dp(14), 0, dp(14))
-            setOnClickListener { removeMenu() }
-        }
-        card.addView(resume, LinearLayout.LayoutParams(dp(240), ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(10)
-        })
-
-        val root = FrameLayout(this).apply {
-            setBackgroundColor(0x99000000.toInt())
-            setOnClickListener { removeMenu() }
-        }
-        root.addView(card, FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER
-        ))
-
-        wm.addView(root, overlayParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        menu = root
+        wm.addView(radial, overlayParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        menu = radial
     }
 
     private fun removeMenu() {
@@ -498,7 +493,7 @@ class RecorderService : Service() {
 
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notif)
-            .setContentTitle("ScreenRec")
+            .setContentTitle("Perekam Layar")
             .setContentText(
                 if (recording) "Sedang merekam. Goyangkan HP untuk berhenti."
                 else "Siap merekam. Ketuk tombol melayang."

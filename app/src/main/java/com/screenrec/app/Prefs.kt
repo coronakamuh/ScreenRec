@@ -26,6 +26,11 @@ class Prefs(context: Context) {
         get() = sp.getInt("aspect", 0)
         set(v) = sp.edit().putInt("aspect", v).apply()
 
+    /** Simpan otomatis ke galeri setelah rekaman selesai. */
+    var autosave: Boolean
+        get() = sp.getBoolean("autosave", true)
+        set(v) = sp.edit().putBoolean("autosave", v).apply()
+
     companion object {
         val RESOLUTIONS = listOf(480, 720, 1080, 0)
         val RESOLUTION_LABELS = listOf("480p", "720p", "1080p", "Asli")

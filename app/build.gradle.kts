@@ -11,8 +11,8 @@ android {
         applicationId = "com.screenrec.app"
         minSdk = 29
         targetSdk = 29
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "2.0"
     }
 
     buildTypes {
@@ -34,4 +34,9 @@ android {
         abortOnError = false
         checkReleaseBuilds = false
     }
+}
+
+dependencies {
+    // FileProvider untuk berbagi dan mengedit hasil rekaman
+    implementation("androidx.core:core:1.12.0")
 }

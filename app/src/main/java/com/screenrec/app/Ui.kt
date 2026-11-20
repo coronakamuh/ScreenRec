@@ -7,6 +7,8 @@ import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
+import android.view.View
+import android.widget.FrameLayout
 import android.widget.TextView
 
 /** Palet warna ala Tailwind (slate + indigo) dan helper pembuat tampilan. */
@@ -55,4 +57,32 @@ object Ui {
             setTextColor(color)
             if (bold) setTypeface(typeface, Typeface.BOLD)
         }
+
+    /** Saklar on/off bergaya Tailwind. Ukuran: 48dp x 28dp, atur lewat LayoutParams pemanggil. */
+    fun toggle(ctx: Context, checked: Boolean, onChange: (Boolean) -> Unit): View {
+        val w = dp(ctx, 48)
+        val h = dp(ctx, 28)
+        val pad = dp(ctx, 3)
+        val thumbSize = h - 2 * pad
+        val track = FrameLayout(ctx)
+        val thumb = View(ctx).apply { background = rounded(ctx, Color.WHITE, 14) }
+        track.addView(thumb, FrameLayout.LayoutParams(thumbSize, thumbSize).apply {
+            leftMargin = pad
+            topMargin = pad
+        })
+        var on = checked
+        fun render(animate: Boolean) {
+            track.background = rounded(ctx, if (on) ACCENT else CHIP, 14)
+            val target = if (on) (w - thumbSize - 2 * pad).toFloat() else 0f
+            if (animate) thumb.animate().translationX(target).setDuration(160).start()
+            else thumb.translationX = target
+        }
+        render(false)
+        track.setOnClickListener {
+            on = !on
+            render(true)
+            onChange(on)
+        }
+        return track
+    }
 }

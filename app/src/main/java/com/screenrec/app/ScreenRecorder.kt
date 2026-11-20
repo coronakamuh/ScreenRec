@@ -75,8 +75,9 @@ class ScreenRecorder(
             setupVideo()
             setupAudio()
 
-            val file = File(context.cacheDir, "rec_tmp.mp4")
-            if (file.exists()) file.delete()
+            MediaSaver.cleanOld(context)
+            val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+            val file = File(context.cacheDir, "rec_$stamp.mp4")
             tmpFile = file
             muxer = MediaMuxer(file.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
 
@@ -367,7 +368,7 @@ class ScreenRecorder(
     // ------------------------------------------------------------------ stop
 
     /** Menghentikan rekaman dan menyimpan ke Movies/ScreenRec. Panggil dari thread latar. */
-    fun stop(): Uri? {
+    fun stop(): RecordingResult? {
         if (!running) return null
 
         virtualDisplay?.release()
@@ -400,7 +401,9 @@ class ScreenRecorder(
         releaseAll()
 
         val file = tmpFile
-        return if (ok && file != null && file.exists() && file.length() > 0) saveToGallery(file) else null
+        if (!ok || file == null || !file.exists() || file.length() <= 0) return null
+        val uri = if (prefs.autosave) MediaSaver.save(context, file) else null
+        return RecordingResult(file, uri)
     }
 
     private fun releaseAll() {
@@ -423,31 +426,6 @@ class ScreenRecorder(
         muxer = null
     }
 
-    private fun saveToGallery(src: File): Uri? {
-        val name = "ScreenRec_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date()) + ".mp4"
-        val values = ContentValues().apply {
-            put(MediaStore.Video.Media.DISPLAY_NAME, name)
-            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-            put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/ScreenRec")
-            put(MediaStore.Video.Media.IS_PENDING, 1)
-        }
-        val resolver = context.contentResolver
-        val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: return null
-        return try {
-            resolver.openOutputStream(uri)?.use { out ->
-                src.inputStream().use { it.copyTo(out) }
-            }
-            values.clear()
-            values.put(MediaStore.Video.Media.IS_PENDING, 0)
-            resolver.update(uri, values, null, null)
-            src.delete()
-            uri
-        } catch (e: Exception) {
-            Log.e(TAG, "Gagal menyimpan video", e)
-            resolver.delete(uri, null, null)
-            null
-        }
-    }
 
     companion object {
         private const val TAG = "ScreenRecorder"
@@ -455,3 +433,6 @@ class ScreenRecorder(
         private const val CHUNK_BYTES = 4096
     }
 }
+
+/** Hasil rekaman: file sementara di cache, dan Uri galeri bila autosave aktif. */
+data class RecordingResult(val file: File, val savedUri: Uri?)

@@ -24,6 +24,7 @@ class MainActivity : Activity() {
     private lateinit var statusDot: View
     private lateinit var statusText: TextView
     private lateinit var aspectHint: TextView
+    private lateinit var autosaveHint: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -97,6 +98,10 @@ class MainActivity : Activity() {
         return row
     }
 
+    private fun autosaveHintText(on: Boolean) =
+        if (on) "Rekaman langsung masuk ke galeri (Movies/ScreenRec)."
+        else "Rekaman baru disimpan setelah Anda menekan Simpan di layar hasil."
+
     private fun aspectHintText(i: Int) = when (i) {
         0 -> "Seluruh layar direkam."
         1, 2 -> "Saat mulai, geser dan ubah ukuran kotak ${Prefs.ASPECT_LABELS[i]}, lalu tekan Mulai."
@@ -126,7 +131,25 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), 0, 0, 0)
         }
-        titles.addView(Ui.text(this, "ScreenRec", 24f, Ui.TEXT, true))
+        val version = try {
+            packageManager.getPackageInfo(packageName, 0).versionName ?: ""
+        } catch (_: Exception) {
+            ""
+        }
+        val titleRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        titleRow.addView(Ui.text(this, "Perekam Layar", 22f, Ui.TEXT, true))
+        if (version.isNotEmpty()) {
+            titleRow.addView(Ui.text(this, "v$version", 11f, Color.WHITE, true).apply {
+                background = Ui.gradient(this@MainActivity, Ui.ACCENT, Ui.ACCENT2, 8)
+                setPadding(dp(7), dp(2), dp(7), dp(2))
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = dp(8) })
+        }
+        titles.addView(titleRow)
         titles.addView(Ui.text(this, "Rekam layar + suara internal", 12f, Ui.MUTED))
         header.addView(titles, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
@@ -172,6 +195,30 @@ class MainActivity : Activity() {
         })
         root.addView(qCard)
 
+        // Kartu penyimpanan
+        val sCard = card("Penyimpanan")
+        val saveRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(14), 0, 0)
+        }
+        val saveTexts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        saveTexts.addView(Ui.text(this, "Simpan otomatis", 14f, Ui.TEXT, true))
+        autosaveHint = Ui.text(this, autosaveHintText(prefs.autosave), 12f, Ui.MUTED).apply {
+            setPadding(0, dp(2), 0, 0)
+        }
+        saveTexts.addView(autosaveHint)
+        saveRow.addView(saveTexts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        saveRow.addView(
+            Ui.toggle(this, prefs.autosave) {
+                prefs.autosave = it
+                autosaveHint.text = autosaveHintText(it)
+            },
+            LinearLayout.LayoutParams(dp(48), dp(28))
+        )
+        sCard.addView(saveRow)
+        root.addView(sCard)
+
         // Tombol utama
         mainBtn = TextView(this).apply {
             textSize = 16f
@@ -189,10 +236,10 @@ class MainActivity : Activity() {
         val tips = card("Cara pakai")
         listOf(
             "1.  Aktifkan tombol melayang dan izinkan semua permintaan.",
-            "2.  Buka aplikasi yang mau direkam, lalu ketuk bola merah.",
+            "2.  Buka aplikasi yang mau direkam, ketuk bola merah, lalu pilih Mulai.",
             "3.  Hitung mundur 3 detik, tombol hilang dan rekaman jalan.",
-            "4.  Goyangkan HP untuk memunculkan menu berhenti.",
-            "5.  Hasil tersimpan di Movies/ScreenRec."
+            "4.  Goyangkan HP untuk memunculkan menu, lalu pilih Berhenti.",
+            "5.  Hasil muncul dengan pilihan Bagikan, Edit, dan Simpan."
         ).forEach {
             tips.addView(Ui.text(this, it, 13f, Ui.SUBTLE).apply { setPadding(0, dp(8), 0, 0) })
         }
@@ -247,7 +294,7 @@ class MainActivity : Activity() {
     // Langkah 2: izin tampil di atas aplikasi lain
     private fun askOverlay() {
         if (!Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "Aktifkan \"Tampil di atas aplikasi lain\" untuk ScreenRec", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Aktifkan \"Tampil di atas aplikasi lain\" untuk Perekam Layar", Toast.LENGTH_LONG).show()
             startActivityForResult(
                 Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")),
                 REQ_OVERLAY
