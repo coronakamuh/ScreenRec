@@ -1,5 +1,6 @@
 package com.screenrec.app
 
+import android.animation.ObjectAnimator
 import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
@@ -54,6 +55,8 @@ class RecorderService : Service() {
     private var selector: RegionSelectorView? = null
     private var menu: View? = null
     private var bubbleLp: WindowManager.LayoutParams? = null
+    private var recDot: View? = null
+    private var recDotAnim: ObjectAnimator? = null
 
     private var state = STATE_IDLE
     private var recordStartedAt = 0L
@@ -150,10 +153,11 @@ class RecorderService : Service() {
     private fun showBubble() {
         if (bubble != null) return
         val size = dp(56)
+        val (sw, sh) = realSize()
         val lp = overlayParams(size, size).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 24
-            y = 320
+            x = sw - size - dp(8)          // sisi kanan
+            y = (sh * 0.65f).toInt()       // agak ke bawah
         }
         bubbleLp = lp
         val slop = ViewConfiguration.get(this).scaledTouchSlop
@@ -298,6 +302,7 @@ class RecorderService : Service() {
             recorder = rec
             state = STATE_RECORDING
             recordStartedAt = SystemClock.elapsedRealtime()
+            showRecDot(region)
             registerShake()
             refreshNotification()
         } else {
@@ -312,6 +317,7 @@ class RecorderService : Service() {
         state = STATE_STOPPING
         unregisterShake()
         removeMenu()
+        removeRecDot()
         Thread {
             val res = rec.stop()
             main.post {
@@ -327,6 +333,7 @@ class RecorderService : Service() {
     private fun quit() {
         unregisterShake()
         removeMenu()
+        removeRecDot()
         removeSelector()
         removeBubble()
 
@@ -363,6 +370,7 @@ class RecorderService : Service() {
         active = false
         unregisterShake()
         removeMenu()
+        removeRecDot()
         removeSelector()
         removeBubble()
         super.onDestroy()
@@ -408,6 +416,52 @@ class RecorderService : Service() {
             sensors.unregisterListener(shakeListener)
         } catch (_: Exception) {
         }
+    }
+
+    // ------------------------------------------------ titik merah berkedip
+
+    /**
+     * Titik merah kecil berkedip di kanan atas. Semua yang tampil di layar ikut terekam,
+     * jadi titik hanya ditampilkan bila posisinya DI LUAR area rekam (mode 16:9, 4:3, custom).
+     * Pada mode layar penuh titik tidak ditampilkan.
+     */
+    private fun showRecDot(region: Rect?) {
+        if (recDot != null || region == null) return
+        val (sw, _) = realSize()
+        val size = dp(14)
+        val sbId = resources.getIdentifier("status_bar_height", "dimen", "android")
+        val statusBar = if (sbId > 0) resources.getDimensionPixelSize(sbId) else dp(24)
+        val dotX = sw - size - dp(12)
+        val dotY = statusBar + dp(6)
+
+        // beri jarak aman 8dp di sekeliling titik
+        val pad = dp(8)
+        val dotArea = Rect(dotX - pad, dotY - pad, dotX + size + pad, dotY + size + pad)
+        if (Rect.intersects(region, dotArea)) return
+
+        val v = View(this).apply {
+            background = Ui.rounded(this@RecorderService, Ui.DANGER, 7)
+        }
+        val lp = overlayParams(size, size, touchable = false).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = dotX
+            y = dotY
+        }
+        wm.addView(v, lp)
+        recDot = v
+        recDotAnim = ObjectAnimator.ofFloat(v, "alpha", 1f, 0.15f).apply {
+            duration = 700
+            repeatMode = ObjectAnimator.REVERSE
+            repeatCount = ObjectAnimator.INFINITE
+            start()
+        }
+    }
+
+    private fun removeRecDot() {
+        recDotAnim?.cancel()
+        recDotAnim = null
+        removeView(recDot)
+        recDot = null
     }
 
     // -------------------------------------------------------- menu melingkar
