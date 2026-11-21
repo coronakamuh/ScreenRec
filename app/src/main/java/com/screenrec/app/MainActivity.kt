@@ -15,7 +15,6 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.widget.Toast
 
 class MainActivity : Activity() {
 
@@ -25,6 +24,7 @@ class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var aspectHint: TextView
     private lateinit var autosaveHint: TextView
+    private lateinit var hintText: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -232,14 +232,21 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = dp(20) })
 
+        hintText = Ui.text(this, "", 12f, Ui.DANGER).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(8), dp(10), dp(8), 0)
+            visibility = View.GONE
+        }
+        root.addView(hintText)
+
         // Cara pakai
         val tips = card("Cara pakai")
         listOf(
             "1.  Aktifkan tombol melayang dan izinkan semua permintaan.",
             "2.  Buka aplikasi yang mau direkam, ketuk bola merah, lalu pilih Mulai.",
-            "3.  Hitung mundur 3 detik, tombol hilang dan rekaman jalan.",
-            "4.  Goyangkan HP untuk memunculkan menu, lalu pilih Berhenti.",
-            "5.  Hasil muncul dengan pilihan Bagikan, Edit, dan Simpan."
+            "3.  Rekaman langsung jalan dan tombol hilang.",
+            "4.  Goyangkan HP untuk berhenti. Hasil langsung tampil.",
+            "5.  Pilih Simpan, Bagikan, atau Edit."
         ).forEach {
             tips.addView(Ui.text(this, it, 13f, Ui.SUBTLE).apply { setPadding(0, dp(8), 0, 0) })
         }
@@ -255,6 +262,11 @@ class MainActivity : Activity() {
             isFillViewport = true
             addView(root)
         }
+    }
+
+    private fun showHint(msg: String) {
+        hintText.text = msg
+        hintText.visibility = View.VISIBLE
     }
 
     private fun refreshState() {
@@ -294,7 +306,7 @@ class MainActivity : Activity() {
     // Langkah 2: izin tampil di atas aplikasi lain
     private fun askOverlay() {
         if (!Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, "Aktifkan \"Tampil di atas aplikasi lain\" untuk Perekam Layar", Toast.LENGTH_LONG).show()
+            showHint("Aktifkan \"Tampil di atas aplikasi lain\" untuk Perekam Layar, lalu kembali ke sini.")
             startActivityForResult(
                 Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")),
                 REQ_OVERLAY
@@ -314,7 +326,7 @@ class MainActivity : Activity() {
         super.onRequestPermissionsResult(code, perms, results)
         if (code == REQ_AUDIO) {
             if (results.firstOrNull() == PackageManager.PERMISSION_GRANTED) askOverlay()
-            else Toast.makeText(this, "Izin mikrofon diperlukan untuk merekam suara internal", Toast.LENGTH_LONG).show()
+            else showHint("Izin mikrofon diperlukan untuk merekam suara internal.")
         }
     }
 
@@ -323,7 +335,7 @@ class MainActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         when (requestCode) {
             REQ_OVERLAY -> if (Settings.canDrawOverlays(this)) askProjection()
-            else Toast.makeText(this, "Izin tampil di atas aplikasi lain belum aktif", Toast.LENGTH_LONG).show()
+            else showHint("Izin tampil di atas aplikasi lain belum aktif.")
 
             REQ_PROJECTION -> if (resultCode == RESULT_OK && data != null) {
                 val svc = Intent(this, RecorderService::class.java)
@@ -331,7 +343,6 @@ class MainActivity : Activity() {
                     .putExtra(RecorderService.EXTRA_RESULT_CODE, resultCode)
                     .putExtra(RecorderService.EXTRA_RESULT_DATA, data)
                 startForegroundService(svc)
-                Toast.makeText(this, "Tombol melayang aktif. Buka aplikasi yang mau direkam.", Toast.LENGTH_LONG).show()
                 moveTaskToBack(true)
             }
         }

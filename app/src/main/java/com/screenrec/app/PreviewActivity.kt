@@ -16,7 +16,6 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.MediaController
 import android.widget.TextView
-import android.widget.Toast
 import android.widget.VideoView
 import androidx.core.content.FileProvider
 import java.io.File
@@ -37,7 +36,6 @@ class PreviewActivity : Activity() {
 
         val path = intent.getStringExtra(EXTRA_FILE)
         if (path == null || !File(path).exists()) {
-            Toast.makeText(this, "File rekaman tidak ditemukan", Toast.LENGTH_LONG).show()
             finish()
             return
         }
@@ -182,7 +180,7 @@ class PreviewActivity : Activity() {
         try {
             startActivity(Intent.createChooser(edit, "Edit dengan"))
         } catch (e: ActivityNotFoundException) {
-            Toast.makeText(this, "Belum ada aplikasi editor video di HP ini", Toast.LENGTH_LONG).show()
+            statusText.text = "Belum ada aplikasi editor video di HP ini"
         }
     }
 
@@ -192,9 +190,8 @@ class PreviewActivity : Activity() {
         if (uri != null) {
             savedUri = uri
             refreshSaveState()
-            Toast.makeText(this, "Tersimpan di Movies/ScreenRec", Toast.LENGTH_SHORT).show()
         } else {
-            Toast.makeText(this, "Gagal menyimpan rekaman", Toast.LENGTH_LONG).show()
+            statusText.text = "Gagal menyimpan rekaman"
         }
     }
 
@@ -204,7 +201,6 @@ class PreviewActivity : Activity() {
         } catch (_: Exception) {
         }
         file.delete()
-        Toast.makeText(this, "Rekaman dibuang", Toast.LENGTH_SHORT).show()
         finish()
     }
 

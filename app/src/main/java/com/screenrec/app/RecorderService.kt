@@ -33,7 +33,6 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -53,7 +52,6 @@ class RecorderService : Service() {
 
     private var bubble: ImageView? = null
     private var selector: RegionSelectorView? = null
-    private var countdownView: TextView? = null
     private var menu: View? = null
     private var bubbleLp: WindowManager.LayoutParams? = null
 
@@ -233,7 +231,7 @@ class RecorderService : Service() {
     /** Mulai: langsung hitung mundur (layar penuh) atau pilih area dulu. */
     private fun startFlow() {
         if (state != STATE_IDLE) return
-        if (prefs.aspect == Prefs.ASPECT_FULL) beginCountdown(null) else showSelector()
+        if (prefs.aspect == Prefs.ASPECT_FULL) beginRecording(null) else showSelector()
     }
 
     private fun openSettings() {
@@ -263,7 +261,7 @@ class RecorderService : Service() {
             Prefs.ratioFor(prefs.aspect),
             onStart = { rect ->
                 removeSelector()
-                beginCountdown(rect)
+                beginRecording(rect)
             },
             onCancel = {
                 removeSelector()
@@ -281,37 +279,13 @@ class RecorderService : Service() {
         selector = null
     }
 
-    // ------------------------------------------------------ hitung mundur
+    // ------------------------------------------------------ mulai merekam
 
-    private fun beginCountdown(region: Rect?) {
-        state = STATE_COUNTDOWN
+    private fun beginRecording(region: Rect?) {
+        state = STATE_COUNTDOWN   // status "bersiap", tanpa hitungan mundur
         removeBubble()
-        val tv = TextView(this).apply {
-            textSize = 96f
-            setTextColor(Color.WHITE)
-            setShadowLayer(16f, 0f, 4f, 0xAA000000.toInt())
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            gravity = Gravity.CENTER
-        }
-        val lp = overlayParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, touchable = false
-        ).apply { gravity = Gravity.CENTER }
-        wm.addView(tv, lp)
-        countdownView = tv
-
-        fun tick(n: Int) {
-            if (state != STATE_COUNTDOWN) return
-            if (n == 0) {
-                removeView(countdownView)
-                countdownView = null
-                // beri waktu agar lapisan hitung mundur benar-benar hilang dari layar
-                main.postDelayed({ startRecording(region) }, 300)
-                return
-            }
-            tv.text = n.toString()
-            main.postDelayed({ tick(n - 1) }, 900)
-        }
-        tick(3)
+        // jeda singkat agar pemilih area / menu benar-benar hilang dari layar sebelum direkam
+        main.postDelayed({ startRecording(region) }, 350)
     }
 
     // ------------------------------------------------------------ merekam
@@ -326,10 +300,8 @@ class RecorderService : Service() {
             recordStartedAt = SystemClock.elapsedRealtime()
             registerShake()
             refreshNotification()
-            Toast.makeText(this, "Merekam. Goyangkan HP untuk berhenti.", Toast.LENGTH_LONG).show()
         } else {
             state = STATE_IDLE
-            Toast.makeText(this, "Gagal memulai rekaman", Toast.LENGTH_LONG).show()
             showBubble()
         }
     }
@@ -348,7 +320,6 @@ class RecorderService : Service() {
                 refreshNotification()
                 showBubble()
                 if (res != null) openPreview(res)
-                else Toast.makeText(this, "Rekaman gagal disimpan", Toast.LENGTH_LONG).show()
             }
         }.start()
     }
@@ -357,8 +328,6 @@ class RecorderService : Service() {
         unregisterShake()
         removeMenu()
         removeSelector()
-        removeView(countdownView)
-        countdownView = null
         removeBubble()
 
         val rec = recorder
@@ -395,7 +364,6 @@ class RecorderService : Service() {
         unregisterShake()
         removeMenu()
         removeSelector()
-        removeView(countdownView)
         removeBubble()
         super.onDestroy()
     }
@@ -420,8 +388,7 @@ class RecorderService : Service() {
                 shakeCount++
                 if (shakeCount >= 3) {
                     shakeCount = 0
-                    val (sw, sh) = realSize()
-                    openRadial(sw / 2f, sh / 2f)
+                    stopRecording()
                 }
             }
         }
